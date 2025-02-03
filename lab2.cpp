@@ -1,6 +1,6 @@
 //
-//modified by:
-//date:
+//modified by: Francisco Andrade
+//date: 02/01/25
 //
 //original author: Gordon Griesel
 //date:            2025
@@ -9,6 +9,8 @@
 //This program needs some refactoring.
 //We will do this in class together.
 //
+// to do list
+// 1/31/2025 add some text
 //
 #include <iostream>
 using namespace std;
@@ -21,6 +23,7 @@ using namespace std;
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
 #include <GL/glx.h>
+#include "fonts.h"
 
 //some structures
 
@@ -28,14 +31,15 @@ class Global {
 public:
 	int xres, yres;
 	float w;
-	float dir;
+	float dir[2];
 	float pos[2];
 	Global()
     {
 	    xres = 400;
 	    yres = 200;
 	    w = 20.0f;
-	    dir = 30.0f;
+	    dir[0] = 32.0f;
+        dir[1] = 28.0f;
 	    pos[0] = 0.0f + w;
         pos[1] = yres/2.0f;
     }
@@ -83,6 +87,7 @@ int main()
 		x11.swapBuffers();
 		usleep(200);
 	}
+	cleanup_fonts();
 	return 0;
 }
 
@@ -126,7 +131,7 @@ void X11_wrapper::set_title()
 {
 	//Set the window title bar.
 	XMapWindow(dpy, win);
-	XStoreName(dpy, win, "3350 Lab-2");
+	XStoreName(dpy, win, "3350 Lab-2 - Esc to exit");
 }
 
 bool X11_wrapper::getXPending()
@@ -220,9 +225,20 @@ int X11_wrapper::check_keys(XEvent *e)
 	int key = XLookupKeysym(&e->xkey, 0);
 	if (e->type == KeyPress) {
 		switch (key) {
-			case XK_a:
-				//the 'a' key was pressed
-				break;
+			case XK_f:
+				//the 'f' key was pressed
+				if(static_cast<int>(abs(g.dir[0])) < 100) {
+                    g.dir[0] *= 2.0;
+                    g.dir[1] *= 2.0;
+                }
+                break;
+            case XK_s:
+                //the 's' key was pressed
+                if(static_cast<int>(abs(g.dir[1])) > 10) {
+                    g.dir[0] /= 2.0;
+                    g.dir[1] /= 2.0;
+                }
+                break;
 			case XK_Escape:
 				//Escape key was pressed
 				return 1;
@@ -242,20 +258,35 @@ void init_opengl(void)
 	glOrtho(0, g.xres, 0, g.yres, -1, 1);
 	//Set the screen background color
 	glClearColor(0.1, 0.1, 0.1, 1.0);
+	
+	//Do this to allow fonts
+	glEnable(GL_TEXTURE_2D);
+	initialize_fonts();
 }
 
 void physics()
 {
 	// Move the box
-    g.pos[0] += g.dir;
+    g.pos[0] += g.dir[0];
+    g.pos[1] += g.dir[1];
     // Collision detection
-	if (g.pos[0] >= (g.xres-g.w)) {
+	//Wall collision detection
+    if (g.pos[0] >= (g.xres-g.w)) {
 		g.pos[0] = (g.xres-g.w);
-		g.dir = -g.dir;
+		g.dir[0] = -g.dir[0];
 	}
 	if (g.pos[0] <= g.w) {
 		g.pos[0] = g.w;
-		g.dir = -g.dir;
+		g.dir[0] = -g.dir[0];
+	}
+    //Ceiling & floor collision detection
+	if (g.pos[1] >= (g.yres-g.w)) {
+		g.pos[1] = (g.yres-g.w);
+		g.dir[1] = -g.dir[1];
+	}
+	if (g.pos[1] <= g.w) {
+		g.pos[1] = g.w;
+		g.dir[1] = -g.dir[1];
 	}
 }
 
@@ -263,15 +294,26 @@ void render()
 {
 	//clear the window
 	glClear(GL_COLOR_BUFFER_BIT);
-	//draw the box
-	glPushMatrix();
-	glColor3ub(100, 120, 220);
-	//short r, g, b;
-    //r = 
-    //g = 
-    //b = 
-    //glColor3ub(255, 0, 0);
-	glTranslatef(g.pos[0], g.pos[1], 0.0f);
+	//draw the box if the window width is larger than the box width
+	if(g.xres >= (g.w+20) && g.yres >= (g.w+20)) {
+        glPushMatrix();
+        //glColor3ub(100, 120, 220);
+        int red, green, blue;
+        const int X_WINDOW_SIZE = 1080;
+        red = 255 - 255*g.xres / X_WINDOW_SIZE;
+        if(red < 0)
+            red = 0;
+        blue = 255*g.xres / X_WINDOW_SIZE;
+        if(blue > 255)
+            blue = 255;
+        green = (red <= blue) ? 2*red : 2*blue;
+        glColor3ub(red, green, blue);
+        // For debugging purposes
+        cout << red << " " << blue << " " << green << " "; 
+        cout << g.xres << " " << g.yres << " ";
+        cout << g.dir[0] << " " << g.dir[1] << endl;
+    }
+    glTranslatef(g.pos[0], g.pos[1], 0.0f);
 	glBegin(GL_QUADS);
 		glVertex2f(-g.w, -g.w);
 		glVertex2f(-g.w,  g.w);
@@ -280,10 +322,14 @@ void render()
 	glEnd();
 	glPopMatrix();
 	
+	Rect r;
+    	//
+    	r.bot = g.yres - 20;
+    	r.left = 10;
+    	r.center = 0;
+    	ggprint8b(&r, 16, 0x00ff0000, "3350 - lab-2");
+    	ggprint8b(&r, 16, 0x00ffff00, "Esc to exit");
+    	ggprint8b(&r, 16, 0x00ffff00, "F   speed up");
+    	ggprint8b(&r, 16, 0x00ffff00, "S   slow down");
 }
-
-
-
-
-
 
